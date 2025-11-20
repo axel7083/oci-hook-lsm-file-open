@@ -1,0 +1,1 @@
+Strongly inspired from https://github.com/containers/oci-seccomp-bpf-hook
