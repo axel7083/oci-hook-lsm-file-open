@@ -8,9 +8,16 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"structs"
 
 	"github.com/cilium/ebpf"
 )
+
+type bpfSyscallData struct {
+	_   structs.HostLayout
+	Pid uint32
+	Id  uint32
+}
 
 // loadBpf returns the embedded CollectionSpec for bpf.
 func loadBpf() (*ebpf.CollectionSpec, error) {
@@ -61,7 +68,7 @@ type bpfProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	CountingMap  *ebpf.MapSpec `ebpf:"counting_map"`
+	EventsMap    *ebpf.MapSpec `ebpf:"events_map"`
 	TargetPidMap *ebpf.MapSpec `ebpf:"target_pid_map"`
 }
 
@@ -91,13 +98,13 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	CountingMap  *ebpf.Map `ebpf:"counting_map"`
+	EventsMap    *ebpf.Map `ebpf:"events_map"`
 	TargetPidMap *ebpf.Map `ebpf:"target_pid_map"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
-		m.CountingMap,
+		m.EventsMap,
 		m.TargetPidMap,
 	)
 }

@@ -4,12 +4,13 @@
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u64);
-	__uint(max_entries, 1);
-} counting_map SEC(".maps");
+// data_t used to store the data received from the event
+struct syscall_data {
+    // PID of the process
+    u32 pid;
+    // the syscall number
+    u32 id;
+};
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
@@ -18,13 +19,13 @@ struct {
     __uint(max_entries, 1);
 } target_pid_map SEC(".maps");
 
-// data_t used to store the data received from the event
-struct syscall_data {
-    // PID of the process
-    u32 pid;
-    // the syscall number
-    u32 id;
-};
+/*
+    https://docs.ebpf.io/linux/map-type/BPF_MAP_TYPE_PERF_EVENT_ARRAY/
+*/
+struct {
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+	__type(value, struct syscall_data);
+} events_map SEC(".maps");
 
 // return 0 if not found
 int get_target_pid(void)
@@ -44,11 +45,18 @@ int get_target_pid(void)
     return *valTargetPid;
 }
 
+struct bpf_raw_tracepoint_args {
+    __u64 args[0];
+};
+
 SEC("tracepoint/raw_syscalls/sys_enter")
-int enter_trace(struct tracepoint__raw_syscalls__sys_enter* args)
+int enter_trace(struct bpf_raw_tracepoint_args* ctx)
 {
     struct syscall_data data = {};
 
+    // Get the syscall number
+    unsigned long syscall_id = ctx->args[1];
+    data.id = syscall_id;
     /*
     The bpf_get_current_pid_tgid helper function returns a 64-bit value containing
      the current task's PID in the lower 32 bits and TGID (thread group ID) in the upper 32 bits.
@@ -62,19 +70,7 @@ int enter_trace(struct tracepoint__raw_syscalls__sys_enter* args)
         return 0;
     }
 
-    // the key of the counter on counting_map
-	u32 key_counter     = 0;
-	// if the counter doesn't exist, initialize it to 1'
-	// u64 initval_counter = 50;
-	// the pointer that will hold the value of the counter
-	u64 *counterValuePointer;
-
-	counterValuePointer = bpf_map_lookup_elem(&counting_map, &key_counter);
-	/* if (!counterValuePointer) {
-		// bpf_map_update_elem(&counting_map, &key_counter, &initval_counter, BPF_ANY);
-		return 0;
-	} */
-	// bpf_map_update_elem(&counting_map, &key_counter, &target_pid, BPF_ANY);
-	__sync_fetch_and_add(counterValuePointer, 1);
+    // write the data to the perf event array
+	bpf_perf_event_output(ctx, &events_map, BPF_F_CURRENT_CPU, &data, sizeof(data));
 	return 0;
 }
