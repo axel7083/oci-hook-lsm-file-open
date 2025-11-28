@@ -20,7 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//go:generate go tool bpf2go -tags linux bpf tracepoint.c -- -I./headers
+//go:generate go tool bpf2go -tags linux bpf tracepoint.c -- -I./../../headers
 
 const countingMapKey uint32 = 0
 const targetPidMapKey uint32 = 0
