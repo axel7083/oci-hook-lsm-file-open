@@ -6,11 +6,35 @@ import (
 	"fmt"
 	"log/syslog"
 	"os"
+	"strconv"
+	"strings"
 
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	logrus_syslog "github.com/sirupsen/logrus/hooks/syslog"
+	"golang.org/x/sys/unix"
 )
+
+func MountNS(pid int) (uint64, error) {
+	path := fmt.Sprintf("/proc/%d/ns/mnt", pid)
+	buf := make([]byte, 128)
+
+	n, err := unix.Readlink(path, buf)
+	if err != nil {
+		return 0, err
+	}
+
+	link := string(buf[:n]) // link looks like: mnt:[4026532548]
+
+	// extract number
+	start := strings.Index(link, "[")
+	end := strings.Index(link, "]")
+	if start == -1 || end == -1 || start >= end {
+		return 0, fmt.Errorf("unexpected format: %s", link)
+	}
+
+	return strconv.ParseUint(link[start+1:end], 10, 64)
+}
 
 // The OCI hook receives the State of the container (Pid, Annotation, etc.) through Stdin
 func parseStdin() (*spec.State, error) {
@@ -45,6 +69,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	logrus.Printf("[oci-hook] received pid %d", state.Pid)
+	mnt, err := MountNS(state.Pid)
+
+	logrus.Printf("[oci-hook] received pid %d from mnt %d", state.Pid, mnt)
+	logrus.Printf("[oci-hook] received container status %s", state.Status)
 	logrus.Printf("[oci-hook] received container status %s", state.Status)
 }

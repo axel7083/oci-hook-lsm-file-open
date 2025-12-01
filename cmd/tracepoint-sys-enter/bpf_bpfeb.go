@@ -8,16 +8,9 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
-	"structs"
 
 	"github.com/cilium/ebpf"
 )
-
-type bpfSyscallData struct {
-	_   structs.HostLayout
-	Pid uint32
-	Id  uint32
-}
 
 // loadBpf returns the embedded CollectionSpec for bpf.
 func loadBpf() (*ebpf.CollectionSpec, error) {
@@ -61,15 +54,18 @@ type bpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
-	EnterTrace *ebpf.ProgramSpec `ebpf:"enter_trace"`
+	MmPageAlloc    *ebpf.ProgramSpec `ebpf:"mm_page_alloc"`
+	SysEnterOpen   *ebpf.ProgramSpec `ebpf:"sys_enter_open"`
+	SysEnterOpenat *ebpf.ProgramSpec `ebpf:"sys_enter_openat"`
 }
 
 // bpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	EventsMap    *ebpf.MapSpec `ebpf:"events_map"`
-	TargetPidMap *ebpf.MapSpec `ebpf:"target_pid_map"`
+	CountingMap     *ebpf.MapSpec `ebpf:"counting_map"`
+	Events          *ebpf.MapSpec `ebpf:"events"`
+	ParentNamespace *ebpf.MapSpec `ebpf:"parent_namespace"`
 }
 
 // bpfVariableSpecs contains global variables before they are loaded into the kernel.
@@ -98,14 +94,16 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	EventsMap    *ebpf.Map `ebpf:"events_map"`
-	TargetPidMap *ebpf.Map `ebpf:"target_pid_map"`
+	CountingMap     *ebpf.Map `ebpf:"counting_map"`
+	Events          *ebpf.Map `ebpf:"events"`
+	ParentNamespace *ebpf.Map `ebpf:"parent_namespace"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
-		m.EventsMap,
-		m.TargetPidMap,
+		m.CountingMap,
+		m.Events,
+		m.ParentNamespace,
 	)
 }
 
@@ -119,12 +117,16 @@ type bpfVariables struct {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
-	EnterTrace *ebpf.Program `ebpf:"enter_trace"`
+	MmPageAlloc    *ebpf.Program `ebpf:"mm_page_alloc"`
+	SysEnterOpen   *ebpf.Program `ebpf:"sys_enter_open"`
+	SysEnterOpenat *ebpf.Program `ebpf:"sys_enter_openat"`
 }
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
-		p.EnterTrace,
+		p.MmPageAlloc,
+		p.SysEnterOpen,
+		p.SysEnterOpenat,
 	)
 }
 

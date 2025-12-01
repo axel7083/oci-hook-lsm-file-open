@@ -63,8 +63,9 @@ type bpfProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	CountingMap *ebpf.MapSpec `ebpf:"counting_map"`
-	Events      *ebpf.MapSpec `ebpf:"events"`
+	CountingMap     *ebpf.MapSpec `ebpf:"counting_map"`
+	Events          *ebpf.MapSpec `ebpf:"events"`
+	ParentNamespace *ebpf.MapSpec `ebpf:"parent_namespace"`
 }
 
 // bpfVariableSpecs contains global variables before they are loaded into the kernel.
@@ -93,14 +94,16 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	CountingMap *ebpf.Map `ebpf:"counting_map"`
-	Events      *ebpf.Map `ebpf:"events"`
+	CountingMap     *ebpf.Map `ebpf:"counting_map"`
+	Events          *ebpf.Map `ebpf:"events"`
+	ParentNamespace *ebpf.Map `ebpf:"parent_namespace"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
 		m.CountingMap,
 		m.Events,
+		m.ParentNamespace,
 	)
 }
 

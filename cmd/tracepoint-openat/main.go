@@ -16,7 +16,6 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"golang.org/x/sys/unix"
 )
 
 // $BPF_CLANG and $BPF_CFLAGS are set by the Makefile.
@@ -27,16 +26,16 @@ type Event struct {
 	syscallNr uint64
 	flags     uint64
 	mode      uint64
-	filename  [64]byte
+	filename  [256]byte
 }
 
 func (e Event) String() string {
-	return fmt.Sprintf("event { {tgid:%d, pid:%d}, syscallNr:%+#v, flags:%+#v, mode:%+#v, filename:%q}",
+	return fmt.Sprintf("event { {tgid:%d, pid:%d}, syscallNr:%+#v, flags:%+#v, mode:%+#v, filename:%d}",
 		e.pid>>32, e.pid&0xffff,
 		e.syscallNr,
 		e.flags,
 		e.mode,
-		unix.ByteSliceToString(e.filename[:]),
+		len(e.filename),
 	)
 }
 
