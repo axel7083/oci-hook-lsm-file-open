@@ -3,38 +3,24 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/syslog"
 	"os"
+	"os/signal"
 	"strconv"
-	"strings"
+	"syscall"
+	"time"
 
+	"github.com/containers/storage/pkg/unshare"
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	logrus_syslog "github.com/sirupsen/logrus/hooks/syslog"
-	"golang.org/x/sys/unix"
 )
 
-func MountNS(pid int) (uint64, error) {
-	path := fmt.Sprintf("/proc/%d/ns/mnt", pid)
-	buf := make([]byte, 128)
-
-	n, err := unix.Readlink(path, buf)
-	if err != nil {
-		return 0, err
-	}
-
-	link := string(buf[:n]) // link looks like: mnt:[4026532548]
-
-	// extract number
-	start := strings.Index(link, "[")
-	end := strings.Index(link, "]")
-	if start == -1 || end == -1 || start >= end {
-		return 0, fmt.Errorf("unexpected format: %s", link)
-	}
-
-	return strconv.ParseUint(link[start+1:end], 10, 64)
-}
+const (
+	BPFTimeout = 10
+)
 
 // The OCI hook receives the State of the container (Pid, Annotation, etc.) through Stdin
 func parseStdin() (*spec.State, error) {
@@ -54,6 +40,65 @@ func parseStdin() (*spec.State, error) {
 	return &s, nil
 }
 
+func initEBPF(pid int) error {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGUSR1, syscall.SIGUSR2)
+
+	attr := &os.ProcAttr{
+		Dir: ".",
+		Env: os.Environ(),
+		Files: []*os.File{
+			os.Stdin,
+			nil,
+			nil,
+		},
+	}
+
+	exec := "/home/axel7083/github/go/ebpf-demo/cmd/lsm-file-open/lsm-file-open"
+	process, err := os.StartProcess(
+		exec,
+		[]string{
+			exec,
+			"--target-pid",
+			strconv.Itoa(pid),
+		},
+		attr,
+	)
+	if err != nil {
+		return fmt.Errorf("cannot re-execute: %v", err)
+	}
+	defer func() {
+		if err := process.Release(); err != nil {
+			logrus.Errorf("Error releasing process: %v", err)
+		}
+	}()
+
+	select {
+	// Check which signal we received and act accordingly.
+	case s := <-sig:
+		logrus.Infof("Received signal (presumably from child): %v", s)
+		switch s {
+		case syscall.SIGUSR1:
+			logrus.Infof("Child started tracing. We can safely detach.")
+			break
+		case syscall.SIGUSR2:
+			logrus.Infof("Child signaled an error.")
+			return errors.New("error while tracing")
+		default:
+			return fmt.Errorf("unexpected signal %v", s)
+		}
+
+	// The timeout kicked in. Kill the child and return the sad news.
+	case <-time.After(BPFTimeout * time.Second):
+		if err := process.Kill(); err != nil {
+			logrus.Errorf("error killing child process: %v", err)
+		}
+		return fmt.Errorf("lsm-file-open didn't responded within %d seconds", BPFTimeout)
+	}
+
+	return nil
+}
+
 func main() {
 	// To facilitate debugging of the hook, write all logs to the syslog,
 	// so we can inspect its output via `journalctl`.
@@ -61,7 +106,12 @@ func main() {
 		logrus.AddHook(hook)
 	}
 
-	logrus.Printf("Hello world from eBPF demo")
+	if os.Getuid() != 0 || unshare.IsRootless() {
+		logrus.Errorf("running the hook requires root privileges")
+		os.Exit(1)
+	}
+
+	logrus.Printf("Hello world from eBPF demo with %d", os.Getuid())
 
 	state, err := parseStdin()
 	if err != nil {
@@ -69,9 +119,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	mnt, err := MountNS(state.Pid)
+	logrus.Printf("[oci-hook] received pid %d", state.Pid)
+	logrus.Printf("[oci-hook] received container status %s", state.Status)
 
-	logrus.Printf("[oci-hook] received pid %d from mnt %d", state.Pid, mnt)
-	logrus.Printf("[oci-hook] received container status %s", state.Status)
-	logrus.Printf("[oci-hook] received container status %s", state.Status)
+	err = initEBPF(state.Pid)
+	if err != nil {
+		logrus.Errorf("init eBPF failed %v", err)
+		os.Exit(1)
+	}
+	logrus.Printf("finishing oci-hook gracefully")
 }

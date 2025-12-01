@@ -54,7 +54,8 @@ type bpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
-	FileOpen *ebpf.ProgramSpec `ebpf:"file_open"`
+	FileOpen         *ebpf.ProgramSpec `ebpf:"file_open"`
+	SchedProcessExit *ebpf.ProgramSpec `ebpf:"sched_process_exit"`
 }
 
 // bpfMapSpecs contains maps before they are loaded into the kernel.
@@ -62,12 +63,15 @@ type bpfProgramSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
 	EventsMap *ebpf.MapSpec `ebpf:"events_map"`
+	TargetMap *ebpf.MapSpec `ebpf:"target_map"`
 }
 
 // bpfVariableSpecs contains global variables before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfVariableSpecs struct {
+	KeyMntNs *ebpf.VariableSpec `ebpf:"key_mnt_ns"`
+	KeyPid   *ebpf.VariableSpec `ebpf:"key_pid"`
 }
 
 // bpfObjects contains all objects after they have been loaded into the kernel.
@@ -91,11 +95,13 @@ func (o *bpfObjects) Close() error {
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
 	EventsMap *ebpf.Map `ebpf:"events_map"`
+	TargetMap *ebpf.Map `ebpf:"target_map"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
 		m.EventsMap,
+		m.TargetMap,
 	)
 }
 
@@ -103,18 +109,22 @@ func (m *bpfMaps) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfVariables struct {
+	KeyMntNs *ebpf.Variable `ebpf:"key_mnt_ns"`
+	KeyPid   *ebpf.Variable `ebpf:"key_pid"`
 }
 
 // bpfPrograms contains all programs after they have been loaded into the kernel.
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
-	FileOpen *ebpf.Program `ebpf:"file_open"`
+	FileOpen         *ebpf.Program `ebpf:"file_open"`
+	SchedProcessExit *ebpf.Program `ebpf:"sched_process_exit"`
 }
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
 		p.FileOpen,
+		p.SchedProcessExit,
 	)
 }
 
