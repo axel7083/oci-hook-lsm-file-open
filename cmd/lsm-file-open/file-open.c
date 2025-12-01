@@ -8,13 +8,16 @@
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
-/* Per-CPU scratch buffer for full paths */
+#define PATH_MAX        4096
+
 struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, char[4096]);
-} scratch SEC(".maps");
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24);
+} events_map SEC(".maps");
+
+struct event_t {
+    char filename[PATH_MAX];
+};
 
 // return 1 if true 0 otherwise
 inline int is_target() {
@@ -66,26 +69,24 @@ int BPF_PROG(file_open, struct file *file)
         return 0;
     }
 
-    /* ---- Full path with map buffer ---- */
-    __u32 key = 0;
-    char *fullpath = bpf_map_lookup_elem(&scratch, &key);
-    if (!fullpath) {
-        bpf_printk("basename: %s | fullpath: <scratch map lookup failed>\n",
-                   basename);
+
+    struct event_t *event;
+    event = bpf_ringbuf_reserve(&events_map, sizeof(struct event_t), 0);
+    if (!event) {
+        // Discard the reserved data
         return 0;
     }
 
     // https://docs.ebpf.io/linux/kfuncs/bpf_path_d_path/
     // available from kernel 6.12
-    ret = bpf_path_d_path(&file->f_path, fullpath, 4096);
+    ret = bpf_path_d_path(&file->f_path, event->filename, 4096);
     if (ret < 0) {
-        bpf_printk("basename: %s | fullpath: <d_path failed %d>\n",
-                   basename, ret);
+        // Discard the reserved data
+        bpf_ringbuf_discard(event, 0);
         return 0;
     }
 
-    bpf_printk("basename: %s | fullpath: %s\n",
-               basename, fullpath);
-
+    bpf_printk("basename: %s | fullpath: %s\n", basename, event->filename);
+    bpf_ringbuf_submit(event, 0);
     return 0;
 }

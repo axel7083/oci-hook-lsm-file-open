@@ -7,17 +7,42 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"time"
+	"unsafe"
 
 	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"golang.org/x/sys/unix"
 )
 
 // $BPF_CLANG and $BPF_CFLAGS are set by the Makefile.
 //go:generate go tool bpf2go -tags linux bpf file-open.c -- -I./../../headers
 
+type Event struct {
+	filename [4096]byte
+}
+
 var objs = bpfObjects{}
+
+const __sz_event = unsafe.Sizeof(Event{})
+
+func (e Event) String() string {
+	return fmt.Sprintf("event { {filename:%q}",
+		unix.ByteSliceToString(e.filename[:]),
+	)
+}
+
+func (e *Event) UnmarshalBinary(b []byte) {
+	if len(b) != int(__sz_event) {
+		log.Fatalf("expected %d got %d", __sz_event, len(b))
+		return
+	}
+	*e = *(*Event)(unsafe.Pointer(&b[0]))
+}
 
 func syscallOpen() {
 
@@ -33,7 +58,26 @@ func syscallOpen() {
 	log.Println("Waiting for events..")
 
 	for range ticker.C {
-		log.Printf("Tick")
+		rd, err := ringbuf.NewReader(objs.bpfMaps.EventsMap)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rd.Close()
+		var ev Event
+		for {
+			rec, err := rd.Read()
+			if err != nil {
+				if errors.Is(err, ringbuf.ErrClosed) {
+					log.Println("received signal, exiting...")
+					return
+				}
+				log.Printf("reading from reader: %s\n", err)
+				continue
+			}
+
+			ev.UnmarshalBinary(rec.RawSample)
+			log.Printf("events: %s\n", ev.String())
+		}
 	}
 }
 
