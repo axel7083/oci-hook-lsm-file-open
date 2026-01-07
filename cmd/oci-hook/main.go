@@ -20,6 +20,8 @@ import (
 
 const (
 	BPFTimeout = 10
+
+	HookAnnotation = "oci-demo-hook"
 )
 
 // The OCI hook receives the State of the container (Pid, Annotation, etc.) through Stdin
@@ -40,7 +42,7 @@ func parseStdin() (*spec.State, error) {
 	return &s, nil
 }
 
-func initEBPF(pid int) error {
+func initEBPF(pid int, output string) error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGUSR1, syscall.SIGUSR2)
 
@@ -61,6 +63,8 @@ func initEBPF(pid int) error {
 			exec,
 			"--target-pid",
 			strconv.Itoa(pid),
+			"--output",
+			output,
 		},
 		attr,
 	)
@@ -119,10 +123,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	annotation := state.Annotations[HookAnnotation]
+
 	logrus.Printf("[oci-hook] received pid %d", state.Pid)
 	logrus.Printf("[oci-hook] received container status %s", state.Status)
+	logrus.Printf("[oci-hook] annotation value %s", annotation)
 
-	err = initEBPF(state.Pid)
+	err = initEBPF(state.Pid, annotation)
 	if err != nil {
 		logrus.Errorf("init eBPF failed %v", err)
 		os.Exit(1)

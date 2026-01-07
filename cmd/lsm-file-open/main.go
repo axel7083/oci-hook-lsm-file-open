@@ -7,11 +7,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log/syslog"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,7 +70,7 @@ func setTargetMap(pid uint64, mntNS uint64) error {
 /*
 Attach the eBPF hooks
 */
-func attach() error {
+func attach(outputPath string) error {
 	var wg sync.WaitGroup
 
 	tracepoint, err := link.Tracepoint("sched", "sched_process_exit", objs.SchedProcessExit, nil)
@@ -95,6 +98,9 @@ func attach() error {
 
 	// Initialize the wait group used to wait for the tracing to be finished.
 	wg.Add(1)
+	filesSet := make(map[string]struct{})
+	var mu sync.Mutex
+
 	go func() {
 		defer wg.Done()
 
@@ -117,7 +123,12 @@ func attach() error {
 				return
 			}
 
-			logrus.Printf("events: %s", unix.ByteSliceToString(ev.filename[:]))
+			filename := unix.ByteSliceToString(ev.filename[:])
+			logrus.Printf("events: %s", filename)
+
+			mu.Lock()
+			filesSet[filename] = struct{}{}
+			mu.Unlock()
 		}
 	}()
 
@@ -136,6 +147,35 @@ func attach() error {
 	// Waiting for the goroutine which is reading the perf buffer to be done
 	// The goroutine will exit when the container exits
 	wg.Wait()
+
+	// Export to JSON
+	mu.Lock()
+	files := make([]string, 0, len(filesSet))
+	for f := range filesSet {
+		files = append(files, f)
+	}
+	mu.Unlock()
+
+	sort.Strings(files)
+
+	output := struct {
+		Files []string `json:"files"`
+	}{
+		Files: files,
+	}
+
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory for output: %v", err)
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal json: %v", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0666); err != nil {
+		return fmt.Errorf("failed to write output file: %v", err)
+	}
 
 	return nil
 }
@@ -175,11 +215,28 @@ func main() {
 	}
 
 	targetPid := flag.Uint64("target-pid", 0, "Trace the specified mnt namespace")
+	outputFile := flag.String("output", "", "The path for the json output")
 	flag.Parse()
 
 	if targetPid == nil || *targetPid == 0 {
-		logrus.Errorf("--mnt-ns is required")
+		logrus.Errorf("--target-pid is required")
 		os.Exit(1)
+	}
+
+	if outputFile == nil || *outputFile == "" {
+		logrus.Errorf("--output is required")
+		os.Exit(1)
+	}
+
+	if filepath.IsAbs(*outputFile) {
+		logrus.Errorf("--output must be absolute")
+		os.Exit(1)
+	}
+
+	// Ensure the parent directory for the output file exists
+	outputDir := filepath.Dir(*outputFile)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		logrus.Fatalf("failed to create output directory: %v", err)
 	}
 
 	// Load pre-compiled programs and maps into the kernel.
@@ -202,7 +259,7 @@ func main() {
 	}
 
 	// Attach on lsm/file_open
-	if err := attach(); err != nil {
+	if err := attach(*outputFile); err != nil {
 		logrus.Errorf("cannot attach lsm/file_open: %v", err)
 		os.Exit(1)
 	}
