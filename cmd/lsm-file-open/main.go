@@ -117,7 +117,7 @@ func attach() error {
 				return
 			}
 
-			logrus.Printf("events: %s\n", ev.String())
+			logrus.Printf("events: %s", unix.ByteSliceToString(ev.filename[:]))
 		}
 	}()
 
