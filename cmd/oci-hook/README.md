@@ -14,4 +14,4 @@ journalctl -t /home/axel7083/github/go/ebpf-demo/cmd/lsm-file-open/lsm-file-open
 
 ## Start a container
 
-sudo podman run --annotation="oci-demo-hook=foo" -it ubuntu
+sudo podman run --annotation="oci-demo-hook=$(pwd)/dist/fedora.profiling.json" -it quay.io/fedora/fedora@sha256:062dfd4369440e87bf18d3748e1c0b9e1530833724de291d5f3714555f8418bf
