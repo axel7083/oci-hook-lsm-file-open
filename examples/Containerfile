@@ -1,3 +1,0 @@
-FROM alpine:latest
-RUN apk add --no-cache bash
-CMD ["/bin/bash", "-c", "cat /etc/passwd /etc/hosts /etc/hostname"]
