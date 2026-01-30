@@ -55,7 +55,7 @@ type entry struct {
 	kind     entryType
 	name     string
 	node     *Node
-	opened   bool
+	file     *FileInfo
 	coverage float64
 }
 
@@ -71,7 +71,7 @@ type Model struct {
 
 	entries []entry
 	cursor  int
-	offset  int // scroll offset
+	offset  int
 
 	width  int
 	height int
@@ -91,30 +91,14 @@ func New(report *Report) Model {
 }
 
 //
-// ===== Coverage logic =====
+// ===== Coverage logic (byte-based) =====
 //
 
-func coverage(n *Node) (opened, total int) {
-	for _, v := range n.Files {
-		total++
-		if v {
-			opened++
-		}
-	}
-	for _, d := range n.Directories {
-		o, t := coverage(d)
-		opened += o
-		total += t
-	}
-	return
-}
-
 func coveragePercent(n *Node) float64 {
-	o, t := coverage(n)
-	if t == 0 {
+	if n.TotalSize == 0 {
 		return 100
 	}
-	return float64(o) / float64(t) * 100
+	return float64(n.OpenedSize) / float64(n.TotalSize) * 100
 }
 
 //
@@ -147,10 +131,11 @@ func (m *Model) refresh() {
 	sort.Strings(fileNames)
 
 	for _, name := range fileNames {
+		fi := m.curr.Files[name]
 		entries = append(entries, entry{
-			kind:   entryFile,
-			name:   name,
-			opened: m.curr.Files[name],
+			kind: entryFile,
+			name: name,
+			file: &fi,
 		})
 	}
 
@@ -226,7 +211,6 @@ func (m Model) View() string {
 
 	var s string
 
-	// Header
 	pathStr := "/"
 	for _, p := range m.path {
 		pathStr += p + "/"
@@ -243,7 +227,8 @@ func (m Model) View() string {
 	start := m.offset
 	end := min(start+visibleRows, len(m.entries))
 
-	nameWidth := int(math.Max(20, float64(m.width)*0.6))
+	nameWidth := int(math.Max(20, float64(m.width)*0.5))
+	sizeWidth := 10
 	statusWidth := 10
 
 	for i := start; i < end; i++ {
@@ -254,22 +239,26 @@ func (m Model) View() string {
 
 		case entryDir:
 			line = fmt.Sprintf(
-				" 📁 %-*s %s",
+				" 📁 %-*s %*s %s",
 				nameWidth,
 				e.name,
+				sizeWidth,
+				humanSize(e.node.TotalSize),
 				styleCoverage(e.coverage),
 			)
 
 		case entryFile:
-			status := fileClosedStyle.Render("closed")
-			if e.opened {
+			status := fileClosedStyle.Render("unused")
+			if e.file.Accessed {
 				status = fileOpenStyle.Render("opened")
 			}
 
 			line = fmt.Sprintf(
-				" 📄 %-*s %-*s",
+				" 📄 %-*s %*s %-*s",
 				nameWidth,
 				e.name,
+				sizeWidth,
+				humanSize(e.file.Size),
 				statusWidth,
 				status,
 			)
@@ -316,4 +305,17 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func humanSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

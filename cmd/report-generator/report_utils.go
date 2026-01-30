@@ -7,9 +7,18 @@ import (
 	"strings"
 )
 
+type FileInfo struct {
+	Size     int64 `json:"size"`
+	Accessed bool  `json:"accessed"`
+}
+
 type Node struct {
-	Files       map[string]bool  `json:"files,omitempty"`
-	Directories map[string]*Node `json:"directories,omitempty"`
+	Files       map[string]FileInfo `json:"files,omitempty"`
+	Directories map[string]*Node    `json:"directories,omitempty"`
+
+	// Aggregated sizes (bytes)
+	TotalSize  int64 `json:"totalSize"`
+	OpenedSize int64 `json:"openedSize"`
 }
 
 type Report struct {
@@ -18,13 +27,13 @@ type Report struct {
 
 func newNode() *Node {
 	return &Node{
-		Files:       make(map[string]bool),
+		Files:       make(map[string]FileInfo),
 		Directories: make(map[string]*Node),
 	}
 }
 
 func BuildReport(
-	imageFiles map[string]int64,
+	imageFiles map[string]int64, // path -> size
 	openedFiles map[string]struct{},
 ) (*Report, error) {
 
@@ -38,8 +47,8 @@ func BuildReport(
 		}
 	}
 
-	for p := range imageFiles {
-		if err := insertPath(root, p, validOpened); err != nil {
+	for p, size := range imageFiles {
+		if err := insertPath(root, p, size, validOpened); err != nil {
 			return nil, err
 		}
 	}
@@ -47,7 +56,13 @@ func BuildReport(
 	return &Report{Root: root}, nil
 }
 
-func insertPath(root *Node, fullPath string, openedFiles map[string]struct{}) error {
+func insertPath(
+	root *Node,
+	fullPath string,
+	size int64,
+	openedFiles map[string]struct{},
+) error {
+
 	if fullPath == "" {
 		return fmt.Errorf("empty path")
 	}
@@ -59,7 +74,6 @@ func insertPath(root *Node, fullPath string, openedFiles map[string]struct{}) er
 		return fmt.Errorf("path must be absolute: %q", fullPath)
 	}
 
-	// Remove leading "/"
 	rel := strings.TrimPrefix(clean, "/")
 	if rel == "" {
 		// Path was "/" — nothing to insert
@@ -67,8 +81,15 @@ func insertPath(root *Node, fullPath string, openedFiles map[string]struct{}) er
 	}
 
 	parts := strings.Split(rel, "/")
+	_, accessed := openedFiles[clean]
 
 	curr := root
+
+	// Root aggregates
+	curr.TotalSize += size
+	if accessed {
+		curr.OpenedSize += size
+	}
 
 	// Walk directories
 	for i := 0; i < len(parts)-1; i++ {
@@ -82,6 +103,12 @@ func insertPath(root *Node, fullPath string, openedFiles map[string]struct{}) er
 			next = newNode()
 			curr.Directories[dir] = next
 		}
+
+		next.TotalSize += size
+		if accessed {
+			next.OpenedSize += size
+		}
+
 		curr = next
 	}
 
@@ -91,8 +118,10 @@ func insertPath(root *Node, fullPath string, openedFiles map[string]struct{}) er
 		return nil
 	}
 
-	_, accessed := openedFiles[clean]
-	curr.Files[filename] = accessed
+	curr.Files[filename] = FileInfo{
+		Size:     size,
+		Accessed: accessed,
+	}
 
 	return nil
 }
