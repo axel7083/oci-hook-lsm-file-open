@@ -209,13 +209,12 @@ func (m Model) View() string {
 		return "loading…"
 	}
 
-	var s string
-
+	// ----- Header -----
 	pathStr := "/"
 	for _, p := range m.path {
 		pathStr += p + "/"
 	}
-	s += headerStyle.Render("Path: "+pathStr) + "\n\n"
+	header := headerStyle.Render("Path: "+pathStr) + "\n\n"
 
 	headerHeight := 2
 	footerHeight := 2
@@ -231,6 +230,8 @@ func (m Model) View() string {
 	sizeWidth := 10
 	statusWidth := 10
 
+	// ----- Body (scrollable) -----
+	var body string
 	for i := start; i < end; i++ {
 		e := m.entries[i]
 		var line string
@@ -268,11 +269,13 @@ func (m Model) View() string {
 			line = selectedRowStyle.Render(line)
 		}
 
-		s += line + "\n"
+		body += line + "\n"
 	}
 
-	s += "\n↑↓ navigate • enter open • ← back • q quit\n"
-	return s
+	// ----- Footer -----
+	footer := "\n↑↓ navigate • enter open • ← back • q quit"
+
+	return header + body + footer
 }
 
 //

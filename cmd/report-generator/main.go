@@ -39,7 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	p := tea.NewProgram(New(report))
+	p := tea.NewProgram(New(report), tea.WithAltScreen())
 	if err := p.Start(); err != nil {
 		log.Fatal(err)
 	}
