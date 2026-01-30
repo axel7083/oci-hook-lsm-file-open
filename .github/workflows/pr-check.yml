@@ -26,7 +26,8 @@ jobs:
             llvm \
             libelf-dev \
             libbpf-dev \
-            bpftool
+            linux-tools-common \
+            linux-headers-$(uname -r)
 
       - name: Build binaries
         run: make
