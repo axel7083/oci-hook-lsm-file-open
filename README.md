@@ -4,6 +4,7 @@ Inspired from https://github.com/containers/oci-seccomp-bpf-hook
 
 ### Prerequisites
 
+- **Linux kernel > 6.12**
 - Go **1.25+**
 - `git`
 - Linux (root privileges required for the OCI hook / eBPF parts)
