@@ -224,8 +224,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if filepath.IsAbs(*outputFile) {
-		logrus.Errorf("--output must be absolute")
+	if !filepath.IsAbs(*outputFile) {
+		logrus.Errorf("--output must be absolute, got %s", *outputFile)
 		os.Exit(1)
 	}
 

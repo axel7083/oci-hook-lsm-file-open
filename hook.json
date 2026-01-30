@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "hook": {
-    "path": "/home/axel7083/github/go/ebpf-demo/cmd/oci-hook/oci-hook",
+    "path": "__OCI_HOOK_PATH__",
     "args": []
   },
   "when": {

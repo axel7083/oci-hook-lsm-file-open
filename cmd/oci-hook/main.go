@@ -8,6 +8,7 @@ import (
 	"log/syslog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -56,7 +57,19 @@ func initEBPF(pid int, output string) error {
 		},
 	}
 
-	exec := "/home/axel7083/github/go/ebpf-demo/cmd/lsm-file-open/lsm-file-open"
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	execDir := filepath.Dir(self)
+	exec := filepath.Join(execDir, "lsm-file-open")
+
+	// Optional but very useful sanity check
+	if _, err := os.Stat(exec); err != nil {
+		return fmt.Errorf("lsm-file-open not found at %s: %w", exec, err)
+	}
+
 	process, err := os.StartProcess(
 		exec,
 		[]string{
