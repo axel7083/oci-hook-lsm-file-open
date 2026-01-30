@@ -22,10 +22,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            llvm \
             clang \
+            llvm \
             libelf-dev \
-            linux-headers-$(uname -r)
+            libbpf-dev \
+            bpftool
 
       - name: Build binaries
         run: make
