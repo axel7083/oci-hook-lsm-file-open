@@ -1,13 +1,24 @@
-Strongly inspired from https://github.com/containers/oci-seccomp-bpf-hook
+Inspired from https://github.com/containers/oci-seccomp-bpf-hook
 
-## Setup
+## Installation
 
-### Generate the `headers/vmlinux.h` file
+### Prerequisites
+
+- Go **1.25+**
+- `git`
+- Linux (root privileges required for the OCI hook / eBPF parts)
+- Kernel with eBPF + LSM support enabled
+
+### Clone the repository
 
 ```bash
-$ bpftool btf dump file /sys/kernel/btf/vmlinux format c > headers/vmlinux.h
+git clone https://github.com/axel7083/oci-hook-lsm-file-open
+cd oci-hook-lsm-file-open
 ```
 
-### Configure the oci-hook
+### Configure
 
-Use the [](./)
+```
+go mod download
+make install
+```
